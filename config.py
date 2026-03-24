@@ -1,7 +1,6 @@
-"""設定管理モジュール"""
+"""設定管理モジュール - スクショ録画管理君"""
 
 from __future__ import annotations
-
 
 import os
 from pathlib import Path
@@ -19,6 +18,7 @@ class Config:
     NOTION_API_KEY: str = os.getenv("NOTION_API_KEY", "")
     NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
     NOTION_SUMMARY_DATABASE_ID: str = os.getenv("NOTION_SUMMARY_DATABASE_ID", "")
+    LINE_NOTIFY_TOKEN: str = os.getenv("LINE_NOTIFY_TOKEN", "")
 
     # スクリーンショット設定
     CAPTURE_INTERVAL: int = int(os.getenv("CAPTURE_INTERVAL", "30"))
@@ -30,6 +30,9 @@ class Config:
 
     # サマリー設定
     SUMMARY_TIME: str = os.getenv("SUMMARY_TIME", "23:00")
+
+    # レポート保存先
+    REPORT_DIR: Path = Path(__file__).parent / "reports"
 
     # SQLiteパス
     DB_PATH: Path = Path(__file__).parent / "lifelogger.db"
@@ -54,3 +57,4 @@ class Config:
         """必要なディレクトリを作成"""
         cls.SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
         cls.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        cls.REPORT_DIR.mkdir(parents=True, exist_ok=True)

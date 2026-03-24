@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-"""LifeLogger - メインエントリーポイント"""
+"""スクショ録画管理君 - メインエントリーポイント"""
 
 import sys
 import signal
@@ -20,7 +20,6 @@ from summarizer import generate_daily_summary
 
 logger = logging.getLogger(__name__)
 
-# グレースフルシャットダウン用フラグ
 _running = True
 
 
@@ -33,23 +32,18 @@ def signal_handler(signum, frame):
 def process_screenshot(capture: ScreenCapture, db: LocalDB, notion: NotionLogger):
     """1回のスクリーンショット撮影→分析→保存サイクル"""
     try:
-        # スクリーンショット撮影
         screenshot_path = capture.capture()
         if screenshot_path is None:
-            return  # スキップ（画面変化なし or ロック中）
+            return
 
         timestamp = datetime.now()
 
-        # AI分析
         result = analyze_screenshot(screenshot_path)
         if result is None:
-            logger.warning("分析失敗、ローカルのみ保存")
+            logger.warning("分析失敗、スキップ")
             return
 
-        # Notionに保存
         notion_page_id = notion.log_activity(result, screenshot_path, timestamp)
-
-        # ローカルDBに保存
         db.save_activity(timestamp, screenshot_path, result, notion_page_id)
 
     except Exception as e:
@@ -66,7 +60,7 @@ def retry_unsent(db: LocalDB, notion: NotionLogger):
         return
 
     logger.info(f"未送信ログ {len(unsent)} 件をリトライ")
-    for act in unsent[:10]:  # 1回のリトライは最大10件
+    for act in unsent[:10]:
         try:
             result = AnalysisResult(
                 activity=act["activity"],
@@ -90,13 +84,11 @@ def retry_unsent(db: LocalDB, notion: NotionLogger):
 def main():
     global _running
 
-    # ロギング設定
     setup_logging()
     logger.info("=" * 50)
-    logger.info("LifeLogger 起動")
+    logger.info("スクショ録画管理君 起動")
     logger.info("=" * 50)
 
-    # 設定検証
     errors = Config.validate()
     if errors:
         for err in errors:
@@ -106,28 +98,23 @@ def main():
 
     Config.ensure_dirs()
 
-    # コンポーネント初期化
     capture = ScreenCapture()
     db = LocalDB()
     notion = NotionLogger()
 
-    # シグナルハンドラ設定
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # スケジュール設定
     interval = Config.CAPTURE_INTERVAL
 
-    # 日次サマリー
+    # 日次サマリー + HTMLレポート + LINE通知（毎日23:00）
     summary_time = Config.SUMMARY_TIME
     schedule.every().day.at(summary_time).do(generate_daily_summary)
-    logger.info(f"日次サマリー: 毎日 {summary_time} に実行")
+    logger.info(f"日次サマリー + レポート + LINE通知: 毎日 {summary_time}")
 
-    # 古いスクリーンショットのクリーンアップ（毎日1回）
+    # 古いスクリーンショットのクリーンアップ（毎日4:00）
     schedule.every().day.at("04:00").do(
-        cleanup_old_screenshots,
-        Config.SCREENSHOT_DIR,
-        Config.LOCAL_RETENTION_DAYS,
+        cleanup_old_screenshots, Config.SCREENSHOT_DIR, Config.LOCAL_RETENTION_DAYS,
     )
 
     # 未送信ログのリトライ（5分ごと）
@@ -135,30 +122,24 @@ def main():
 
     logger.info(f"キャプチャ間隔: {interval}秒")
     logger.info(f"スクリーンショット保存先: {Config.SCREENSHOT_DIR}")
-    logger.info("LifeLogger 稼働開始")
+    logger.info("スクショ録画管理君 稼働開始")
 
-    # メインループ
     last_capture = 0
     while _running:
         try:
-            # スケジュールされたジョブの実行
             schedule.run_pending()
-
-            # キャプチャ間隔の制御
             now = time.time()
             if now - last_capture >= interval:
                 process_screenshot(capture, db, notion)
                 last_capture = now
-
-            time.sleep(1)  # 1秒待機（CPU負荷軽減）
-
+            time.sleep(1)
         except KeyboardInterrupt:
             break
         except Exception as e:
             logger.error(f"メインループエラー: {e}", exc_info=True)
             time.sleep(5)
 
-    logger.info("LifeLogger 停止")
+    logger.info("スクショ録画管理君 停止")
 
 
 if __name__ == "__main__":

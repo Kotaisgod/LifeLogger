@@ -1,7 +1,6 @@
-"""日次サマリー生成モジュール"""
+"""日次サマリー生成モジュール - スクショ録画管理君"""
 
 from __future__ import annotations
-
 
 import json
 import logging
@@ -14,10 +13,11 @@ from google.genai import types
 from config import Config
 from db import LocalDB
 from notion_logger import NotionLogger
+from report_generator import generate_html_report
+from line_notify import notify_daily_report
 
 logger = logging.getLogger(__name__)
 
-# サマリー生成プロンプト
 SUMMARY_PROMPT = """以下は1日のPC使用ログです。日本語で3〜5文で1日の振り返りサマリーを生成してください。
 何に最も時間を使ったか、生産性の傾向、改善点などを含めてください。
 サマリーテキストだけを返してください。
@@ -28,7 +28,7 @@ SUMMARY_PROMPT = """以下は1日のPC使用ログです。日本語で3〜5文�
 
 
 def generate_daily_summary(date: str | None = None):
-    """指定日（デフォルト: 今日）の日次サマリーを生成してNotionに記録"""
+    """指定日の日次サマリー生成 → Notion記録 → HTMLレポート → LINE通知"""
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
@@ -43,16 +43,12 @@ def generate_daily_summary(date: str | None = None):
     category_time: dict[str, float] = defaultdict(float)
     app_time: dict[str, float] = defaultdict(float)
     total_scores = []
-    interval_hours = Config.CAPTURE_INTERVAL / 3600  # 1キャプチャあたりの推定時間
+    interval_hours = Config.CAPTURE_INTERVAL / 3600
 
     for act in activities:
-        cat = act.get("category", "その他")
-        app = act.get("app_name", "不明")
-        score = act.get("productivity_score", 3)
-
-        category_time[cat] += interval_hours
-        app_time[app] += interval_hours
-        total_scores.append(score)
+        category_time[act.get("category", "その他")] += interval_hours
+        app_time[act.get("app_name", "不明")] += interval_hours
+        total_scores.append(act.get("productivity_score", 3))
 
     total_hours = len(activities) * interval_hours
     avg_productivity = sum(total_scores) / len(total_scores) if total_scores else 0
@@ -82,6 +78,13 @@ def generate_daily_summary(date: str | None = None):
         notion_page_id=notion_page_id,
     )
 
+    # HTMLレポート生成
+    report_path = generate_html_report(date)
+
+    # LINE通知
+    if report_path:
+        notify_daily_report(date, report_path, total_hours, avg_productivity)
+
     logger.info(f"日次サマリー生成完了: {date} ({total_hours:.1f}h, 生産性: {avg_productivity:.1f})")
 
 
@@ -92,9 +95,8 @@ def _generate_summary_text(
     total_hours: float,
 ) -> str:
     """Gemini APIでサマリーテキストを生成"""
-    # ログデータを要約用にまとめる
     log_lines = []
-    for act in activities[:50]:  # 最大50件に制限
+    for act in activities[:50]:
         log_lines.append(
             f"[{act.get('timestamp', '?')}] {act.get('app_name', '?')} - {act.get('activity', '?')} (カテゴリ: {act.get('category', '?')}, 生産性: {act.get('productivity_score', '?')})"
         )
@@ -116,9 +118,7 @@ def _generate_summary_text(
             contents=[
                 types.Content(
                     role="user",
-                    parts=[
-                        types.Part.from_text(text=SUMMARY_PROMPT.format(log_data=log_data))
-                    ],
+                    parts=[types.Part.from_text(text=SUMMARY_PROMPT.format(log_data=log_data))],
                 )
             ],
         )

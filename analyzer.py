@@ -1,7 +1,6 @@
-"""Gemini AIによる画像分析モジュール"""
+"""Gemini AIによる画像分析モジュール - スクショ録画管理君"""
 
 from __future__ import annotations
-
 
 import json
 import logging
@@ -15,22 +14,29 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-# 分析プロンプト
+# 分析プロンプト（Claude Code判定ロジック含む）
 ANALYSIS_PROMPT = """この画面のスクリーンショットを分析して、以下のJSON形式で回答してください。
 日本語で回答してください。
 
 {
   "activity": "何をしていたかの1行要約",
   "app_name": "使用中のアプリケーション名",
-  "category": "仕事 | SNS | エンタメ | 学習 | コミュニケーション | その他",
+  "category": "仕事 | SNS | エンタメ | 学習 | コミュニケーション | 開発 | その他",
   "detail": "詳細な内容（3行以内）",
   "productivity_score": 1〜5の整数（1=非生産的、5=非常に生産的）
 }
 
-ルール:
+重要な判定ルール:
+- 黒い背景のターミナル画面で、左側に「新規セッション」「検索」「予定済み」「ディスパッチ」などのメニューが表示され、右側でチャットやコード操作をしている場合 → app_name は「Claude Code」、category は「開発」とする
+- ターミナルやコマンドライン画面でコードを書いている場合 → category は「開発」とする
+- VS Code、Cursor、Xcode などのIDE → category は「開発」とする
+- ブラウザでGitHub、Stack Overflow、ドキュメントを閲覧 → category は「開発」とする
+- Slack、LINE、メール → category は「コミュニケーション」とする
+
+その他のルール:
 - JSONのみを返す。説明文は不要
 - app_nameはアプリケーションの正式名称を使用
-- categoryは指定された6つのいずれかを使用
+- categoryは指定された7つのいずれかを使用
 - productivity_scoreは整数のみ
 """
 
@@ -51,7 +57,6 @@ def analyze_screenshot(image_path: Path) -> AnalysisResult | None:
     try:
         client = genai.Client(api_key=Config.GEMINI_API_KEY)
 
-        # 画像をアップロード
         with open(image_path, "rb") as f:
             image_data = f.read()
 
@@ -70,10 +75,9 @@ def analyze_screenshot(image_path: Path) -> AnalysisResult | None:
 
         # レスポンスからJSONをパース
         text = response.text.strip()
-        # マークダウンのコードブロックを除去
         if text.startswith("```"):
-            text = text.split("\n", 1)[1]  # 最初の行を除去
-            text = text.rsplit("```", 1)[0]  # 最後の```を除去
+            text = text.split("\n", 1)[1]
+            text = text.rsplit("```", 1)[0]
             text = text.strip()
 
         data = json.loads(text)
@@ -91,7 +95,6 @@ def analyze_screenshot(image_path: Path) -> AnalysisResult | None:
 
     except json.JSONDecodeError as e:
         logger.error(f"Gemini応答のJSONパースエラー: {e}")
-        logger.debug(f"応答テキスト: {text}")
         return None
     except Exception as e:
         logger.error(f"Gemini分析エラー: {e}")
