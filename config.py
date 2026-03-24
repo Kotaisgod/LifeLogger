@@ -18,7 +18,7 @@ class Config:
     NOTION_API_KEY: str = os.getenv("NOTION_API_KEY", "")
     NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
     NOTION_SUMMARY_DATABASE_ID: str = os.getenv("NOTION_SUMMARY_DATABASE_ID", "")
-    LINE_NOTIFY_TOKEN: str = os.getenv("LINE_NOTIFY_TOKEN", "")
+    SLACK_WEBHOOK_URL: str = os.getenv("SLACK_WEBHOOK_URL", "")
 
     # スクリーンショット設定
     CAPTURE_INTERVAL: int = int(os.getenv("CAPTURE_INTERVAL", "30"))

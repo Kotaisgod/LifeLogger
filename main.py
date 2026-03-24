@@ -110,7 +110,7 @@ def main():
     # 日次サマリー + HTMLレポート + LINE通知（毎日23:00）
     summary_time = Config.SUMMARY_TIME
     schedule.every().day.at(summary_time).do(generate_daily_summary)
-    logger.info(f"日次サマリー + レポート + LINE通知: 毎日 {summary_time}")
+    logger.info(f"日次サマリー + レポート + Slack通知: 毎日 {summary_time}")
 
     # 古いスクリーンショットのクリーンアップ（毎日4:00）
     schedule.every().day.at("04:00").do(

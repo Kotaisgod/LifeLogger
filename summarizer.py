@@ -14,7 +14,7 @@ from config import Config
 from db import LocalDB
 from notion_logger import NotionLogger
 from report_generator import generate_html_report
-from line_notify import notify_daily_report
+from slack_notify import notify_daily_report
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +81,9 @@ def generate_daily_summary(date: str | None = None):
     # HTMLレポート生成
     report_path = generate_html_report(date)
 
-    # LINE通知
+    # Slack通知
     if report_path:
-        notify_daily_report(date, report_path, total_hours, avg_productivity)
+        notify_daily_report(date, report_path, total_hours, avg_productivity, len(activities))
 
     logger.info(f"日次サマリー生成完了: {date} ({total_hours:.1f}h, 生産性: {avg_productivity:.1f})")
 
